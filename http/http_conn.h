@@ -22,7 +22,8 @@
 #include <map>
 
 #include "../lock/locker.h"
-#include "../CGImysql/sql_connection_pool.h"
+// #include "../CGImysql/sql_connection_pool.h"
+#include "../mysql/mysqlConnectPool.h"
 #include "../timer/lst_timer.h"
 #include "../log/log.h"
 
@@ -82,7 +83,7 @@ public:
     {
         return &m_address;
     }
-    void initmysql_result(connection_pool *connPool);
+    void initmysql_result(MysqlConnectionPool *connPool);
     int timer_flag;
     int improv;
 
