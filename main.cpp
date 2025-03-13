@@ -14,9 +14,6 @@ int main(int argc, char *argv[])
                 config.close_log, config.actor_model);
     
 
-    //日志
-    server.log_write();
-
     //触发模式
     server.trig_mode();
 

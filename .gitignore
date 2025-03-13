@@ -2,6 +2,7 @@ server
 testmysql
 testmysql.cpp
 *ServerLog
+*ServerLog.log
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/settings.json
