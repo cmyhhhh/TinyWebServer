@@ -25,13 +25,13 @@ bool Log::init(const std::string &logConfigPath)
     {
         boost::property_tree::ptree pt;
         boost::property_tree::ini_parser::read_ini(logConfigPath, pt);
-        std::strncpy(logName, pt.get<std::string>("Log.LogName").c_str(), sizeof(logName) - 1);
-        std::strncpy(logPath, pt.get<std::string>("Log.LogPath").c_str(), sizeof(logPath) - 1);
         logBufferSize = pt.get<int>("Log.LogBufferSize");
         logSingleFileLine = pt.get<int>("Log.LogSingleFileLine");
         logEnable = pt.get<int>("Log.LogEnable");
         int logQueueSize = pt.get<int>("Log.LogQueueSize");
-
+        std::strncpy(logName, pt.get<std::string>("Log.LogName").c_str(), sizeof(logName) - 1);
+        std::strncpy(logPath, pt.get<std::string>("Log.LogPath").c_str(), sizeof(logPath) - 1);
+        
         // 如果设置了logQueueSize,则设置为异步
         if (logQueueSize > 0)
         {

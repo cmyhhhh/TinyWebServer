@@ -13,7 +13,7 @@
 #include <sys/epoll.h>
 
 #include "./threadpool/threadpool.h"
-#include "./http/http_conn.h"
+#include "./http/HttpConnection.h"
 
 const int MAX_FD = 65536;           // 最大文件描述符
 const int MAX_EVENT_NUMBER = 10000; // 最大事件数
@@ -34,40 +34,40 @@ public:
     void log_write();
     void trig_mode();
     void eventListen();
-    void eventLoop();
-    void timer(int connfd, struct sockaddr_in client_address);
+    void start();
+    void timer(int connfd, struct sockaddr_in clientAddress);
     void adjust_timer(util_timer *timer);
     void deal_timer(util_timer *timer, int sockfd);
-    bool dealclientdata();
+    bool dealClientConnect();
     bool dealwithsignal(bool &timeout, bool &stop_server);
-    void dealwithread(int sockfd);
-    void dealwithwrite(int sockfd);
+    void dealClientRead(int sockfd);
+    void dealClientWrite(int sockfd);
 
 public:
     // 基础
-    int m_port;
-    char *m_root;
+    int httpPort;
+    char *webRoot; // web文件根目录
     int m_log_write;
     int m_close_log;
-    int m_actormodel;
+    int actorModel;
 
-    int m_pipefd[2];
-    int m_epollfd;
-    http_conn *users;
+    int pipeFd[2];
+    int epollFd;
+    HttpConnection *users;
 
 
     // 线程池相关
-    ThreadPool<http_conn> *m_pool;
+    ThreadPool<HttpConnection> *threadPool;
     int m_thread_num;
 
     // epoll_event相关
     epoll_event events[MAX_EVENT_NUMBER];
 
-    int m_listenfd;
-    int m_OPT_LINGER;
-    int m_TRIGMode;
-    int m_LISTENTrigmode;
-    int m_CONNTrigmode;
+    int listenFd;
+    int lingerTime;
+    int epollTrigMode;
+    int listenTriggerMode;
+    int connectTriggerMode;
 
     // 定时器相关
     client_data *users_timer;

@@ -12,7 +12,7 @@ template <typename T>
 class ThreadPool
 {
 public:
-    ThreadPool(const std::string &configPath);
+    ThreadPool(const std::string &configPath, int actorModel);
     ~ThreadPool();
     bool append(T *request, int state = 0);
 
@@ -32,14 +32,13 @@ private:
 };
 
 template <typename T>
-ThreadPool<T>::ThreadPool(const std::string &configPath) : threads(NULL)
+ThreadPool<T>::ThreadPool(const std::string &configPath, int actorModel) : actorModel(actorModel)
 {
     try
     {
         boost::property_tree::ptree pt;
         boost::property_tree::ini_parser::read_ini(configPath, pt);
         threadNumber = pt.get<unsigned int>("ThreadPool.ThreadNumber");
-        actorModel = pt.get<int>("ThreadPool.ActorModel");
         maxRequests = pt.get<unsigned int>("ThreadPool.MaxRequests");
         if (threadNumber <= 0 || maxRequests <= 0)
             throw std::exception();
@@ -81,7 +80,7 @@ bool ThreadPool<T>::append(T *request, int state)
         workqueueLocker.unlock();
         return false;
     }
-    request->m_state = state;
+    request->state = state;
     workqueue.push(request);
     workqueueLocker.unlock();
     taskNumSem.post();
@@ -115,9 +114,9 @@ void ThreadPool<T>::run()
             continue;
         if (1 == actorModel)
         {
-            if (0 == request->m_state)
+            if (0 == request->state)
             {
-                if (request->read_once())
+                if (request->read())
                 {
                     request->improv = 1;
                     MysqlConnectionPoolRAII mysqlcon(&request->mysql, MysqlConnectionPool::getInstance());

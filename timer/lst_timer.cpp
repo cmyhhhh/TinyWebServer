@@ -1,5 +1,5 @@
 #include "lst_timer.h"
-#include "../http/http_conn.h"
+#include "../http/HttpConnection.h"
 
 sort_timer_lst::sort_timer_lst()
 {
@@ -151,29 +151,38 @@ void Utils::init(int timeslot)
 }
 
 //对文件描述符设置非阻塞
-int Utils::setnonblocking(int fd)
+int Utils::setNonBlocking(int socketfd)
 {
-    int old_option = fcntl(fd, F_GETFL);
-    int new_option = old_option | O_NONBLOCK;
-    fcntl(fd, F_SETFL, new_option);
-    return old_option;
+    int flag = fcntl(socketfd, F_GETFL);
+    if (flag == -1)
+        return -1;
+    flag |= O_NONBLOCK;
+    if (fcntl(socketfd, F_SETFL, flag) == -1)
+        return -1;
+    return 0;
 }
 
-//将内核事件表注册读事件，ET模式，选择开启EPOLLONESHOT
-void Utils::addfd(int epollfd, int fd, bool one_shot, int TRIGMode)
+// 将内核事件表注册读事件，ET模式，选择开启EPOLLONESHOT
+void Utils::addEventFd(int epollfd, int socketfd, bool oneshot, int mode)
 {
-    epoll_event event;
-    event.data.fd = fd;
+    epoll_event socketEvent;
+    socketEvent.data.fd = socketfd;
 
-    if (1 == TRIGMode)
-        event.events = EPOLLIN | EPOLLET | EPOLLRDHUP;
+    if (1 == mode)
+        // 边缘触发，监控 数据输入 和 远程挂断或连接关闭
+        socketEvent.events = EPOLLIN | EPOLLET | EPOLLRDHUP;
     else
-        event.events = EPOLLIN | EPOLLRDHUP;
+        // 默认水平触发，监控 数据输入 和 远程挂断或连接关闭
+        socketEvent.events = EPOLLIN | EPOLLRDHUP;
 
-    if (one_shot)
-        event.events |= EPOLLONESHOT;
-    epoll_ctl(epollfd, EPOLL_CTL_ADD, fd, &event);
-    setnonblocking(fd);
+    // socket数据可能未处理完，有新数据到，导致该事件被不同线程再次触发。
+    // 开启EPOLLONESHOT，确保每个socket连接被处理时，只处理一次。
+    // 若想要再次处理，需要重新使用EPOLL_CTL_MOD重新配置文件描述符.
+    // EPOLLONESHOT会挂起
+    if (oneshot)
+        socketEvent.events |= EPOLLONESHOT;
+    epoll_ctl(epollfd, EPOLL_CTL_ADD, socketfd, &socketEvent);
+    setNonBlocking(socketfd);
 }
 
 //信号处理函数
@@ -220,5 +229,5 @@ void cb_func(client_data *user_data)
     epoll_ctl(Utils::u_epollfd, EPOLL_CTL_DEL, user_data->sockfd, 0);
     assert(user_data);
     close(user_data->sockfd);
-    http_conn::m_user_count--;
+    HttpConnection::connectCount--;
 }
