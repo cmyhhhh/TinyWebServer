@@ -118,26 +118,26 @@ void ThreadPool<T>::run()
             {
                 if (request->read())
                 {
-                    request->improv = 1;
+                    request->completeRW = 1;
                     MysqlConnectionPoolRAII mysqlcon(&request->mysql, MysqlConnectionPool::getInstance());
                     request->process();
                 }
                 else
                 {
-                    request->improv = 1;
-                    request->timer_flag = 1;
+                    request->completeRW = 1;
+                    request->failRW = 1;
                 }
             }
             else
             {
                 if (request->write())
                 {
-                    request->improv = 1;
+                    request->completeRW = 1;
                 }
                 else
                 {
-                    request->improv = 1;
-                    request->timer_flag = 1;
+                    request->completeRW = 1;
+                    request->failRW = 1;
                 }
             }
         }

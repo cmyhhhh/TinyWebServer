@@ -120,8 +120,8 @@ void HttpConnection::init()
     writeIdx = 0;
     cgi = 0;
     state = 0;
-    timer_flag = 0;
-    improv = 0;
+    failRW = 0;
+    completeRW = 0;
 
     memset(readBuf, '\0', READ_BUFFER_SIZE);
     memset(writeBuf, '\0', WRITE_BUFFER_SIZE);

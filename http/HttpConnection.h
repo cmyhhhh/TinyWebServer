@@ -23,7 +23,7 @@
 
 #include "../lock/locker.h"
 #include "../mysql/mysqlConnectPool.h"
-#include "../timer/lst_timer.h"
+#include "../timer/connectTimer.h"
 #include "../log/log.h"
 
 class HttpConnection
@@ -89,8 +89,8 @@ public:
         return &socketAddress;
     }
     void initMysqlUser(MysqlConnectionPool *connPool);
-    int timer_flag;
-    int improv;
+    int failRW;     // 读写失败，调用timer关闭该链接
+    int completeRW; // 1为读写完成，0为未完成
 
 private:
     void init();

@@ -7,15 +7,15 @@ WebServer::WebServer()
     users = new HttpConnection[MAX_FD];
 
     // root文件夹路径
-    char server_path[200];
-    getcwd(server_path, 200);
+    char serverPath[200];
+    getcwd(serverPath, 200);
     char root[6] = "/root";
-    webRoot = (char *)malloc(strlen(server_path) + strlen(root) + 1);
-    strcpy(webRoot, server_path);
+    webRoot = (char *)malloc(strlen(serverPath) + strlen(root) + 1);
+    strcpy(webRoot, serverPath);
     strcat(webRoot, root);
 
     // 定时器
-    users_timer = new client_data[MAX_FD];
+    usersTimer = new ClientData[MAX_FD];
 }
 
 WebServer::~WebServer()
@@ -26,7 +26,7 @@ WebServer::~WebServer()
     close(pipeFd[1]);
     close(pipeFd[0]);
     delete[] users;
-    delete[] users_timer;
+    delete[] usersTimer;
     delete threadPool;
 }
 
@@ -106,7 +106,7 @@ void WebServer::eventListen()
     ret = listen(listenFd, 5);
     assert(ret >= 0);
 
-    utils.init(TIMESLOT);
+    utils.init(CONNECT_TIMEOUT);
 
     // epoll创建内核事件表
     epoll_event events[MAX_EVENT_NUMBER];
@@ -117,61 +117,58 @@ void WebServer::eventListen()
     HttpConnection::epollFd = epollFd;
 
     // 创建一对已连接的套接字。这两个套接字彼此连接，可以用于进程间通信（IPC）
-    // pipe是半双工，而socket是双工的
+    // pipe是半双工，而socket是全双工的
     ret = socketpair(PF_UNIX, SOCK_STREAM, 0, pipeFd);
     assert(ret != -1);
+    // 写端为非阻塞
     Utils::setNonBlocking(pipeFd[1]);
     Utils::addEventFd(epollFd, pipeFd[0], false, 0);
 
-    utils.addsig(SIGPIPE, SIG_IGN);
-    utils.addsig(SIGALRM, utils.sig_handler, false);
-    utils.addsig(SIGTERM, utils.sig_handler, false);
-
-    alarm(TIMESLOT);
+    utils.addSig(SIGPIPE, SIG_IGN);
+    utils.addSig(SIGALRM, utils.sigHandler, false);
+    utils.addSig(SIGTERM, utils.sigHandler, false);
+    // 每隔TIMESLOT时间触发SIGALRM信号
+    alarm(CONNECT_TIMEOUT);
 
     // 工具类,信号和描述符基础操作
-    Utils::u_pipefd = pipeFd;
-    Utils::u_epollfd = epollFd;
+    Utils::pipeFd = pipeFd;
+    Utils::epollFd = epollFd;
 }
 
 void WebServer::timer(int connfd, struct sockaddr_in clientAddress)
 {
-    MysqlConnectionPool *connPool = MysqlConnectionPool::getInstance();
-    users[connfd].init(connfd, clientAddress, webRoot, connectTriggerMode);
-
-    // 初始化client_data数据
+    // 初始化ClientData数据
+    usersTimer[connfd].address = clientAddress;
+    usersTimer[connfd].sockfd = connfd;
     // 创建定时器，设置回调函数和超时时间，绑定用户数据，将定时器添加到链表中
-    users_timer[connfd].address = clientAddress;
-    users_timer[connfd].sockfd = connfd;
-    util_timer *timer = new util_timer;
-    timer->user_data = &users_timer[connfd];
-    timer->cb_func = cb_func;
+    Timer *timer = new Timer();
+    timer->userData = &usersTimer[connfd];
+    timer->timerHandler = timeoutDelete;
     time_t cur = time(NULL);
-    timer->expire = cur + 3 * TIMESLOT;
-    users_timer[connfd].timer = timer;
-    utils.m_timer_lst.add_timer(timer);
+    timer->expire = cur + 3 * CONNECT_TIMEOUT;
+    usersTimer[connfd].timer = timer;
+    utils.timerList.addTimer(timer);
 }
 
 // 若有数据传输，则将定时器往后延迟3个单位
 // 并对新的定时器在链表上的位置进行调整
-void WebServer::adjust_timer(util_timer *timer)
+void WebServer::adjustTimer(Timer *timer)
 {
     time_t cur = time(NULL);
-    timer->expire = cur + 3 * TIMESLOT;
-    utils.m_timer_lst.adjust_timer(timer);
+    timer->expire = cur + 3 * CONNECT_TIMEOUT;
+    utils.timerList.adjustTimer(timer);
 
     LOG_INFO("%s", "adjust timer once");
 }
 
-void WebServer::deal_timer(util_timer *timer, int sockfd)
+void WebServer::deleteTimer(Timer *timer, int sockfd)
 {
-    timer->cb_func(&users_timer[sockfd]);
     if (timer)
     {
-        utils.m_timer_lst.del_timer(timer);
+        timer->timerHandler(&usersTimer[sockfd]);
+        utils.timerList.deleteTimer(timer);
+        LOG_INFO("close fd %d", usersTimer[sockfd].sockfd);
     }
-
-    LOG_INFO("close fd %d", users_timer[sockfd].sockfd);
 }
 
 bool WebServer::dealClientConnect()
@@ -194,27 +191,31 @@ bool WebServer::dealClientConnect()
                           inet_ntoa(clientAddress.sin_addr), ntohs(clientAddress.sin_port), errno);
             }
         }
+        /*  FIXME: connectCount是连接数量，但connectFd是文件号。
+            但用来存储连接的users数组是个MAX_FD大小的数组,这会导致即使connectCount<=MAX_FD，
+            也可能会导致users[connectFd]越界。因为文件号也会被其他打开的文件占用。
+         */
         if (HttpConnection::connectCount >= MAX_FD)
         {
-            utils.show_error(connectFd, "too many clients");
+            utils.sendSocketMessage(connectFd, "too many clients");
             LOG_ERROR("%s", "Internal server busy");
             break;
         }
+        // 初始化http连接
+        MysqlConnectionPool *connPool = MysqlConnectionPool::getInstance();
+        users[connectFd].init(connectFd, clientAddress, webRoot, connectTriggerMode);
+        // 将链接加入定时器，超时后自动关闭连接
         timer(connectFd, clientAddress);
     }
 }
 
-bool WebServer::dealwithsignal(bool &timeout, bool &stop_server)
+bool WebServer::dealSignal(bool &timeout, bool &stop_server)
 {
     int ret = 0;
     int sig;
     char signals[1024];
     ret = recv(pipeFd[0], signals, sizeof(signals), 0);
-    if (ret == -1)
-    {
-        return false;
-    }
-    else if (ret == 0)
+    if (ret <= 0)
     {
         return false;
     }
@@ -242,29 +243,29 @@ bool WebServer::dealwithsignal(bool &timeout, bool &stop_server)
 
 void WebServer::dealClientRead(int sockfd)
 {
-    util_timer *timer = users_timer[sockfd].timer;
+    Timer *timer = usersTimer[sockfd].timer;
 
     // reactor
     if (1 == actorModel)
     {
         if (timer)
         {
-            adjust_timer(timer);
+            adjustTimer(timer);
         }
 
         // 若监测到读事件，将该事件放入请求队列
         threadPool->append(users + sockfd, 0);
-
+        // TODO: 这里一直在等待读写完成才进一步处理，那这样和proactor模式没区别
         while (true)
         {
-            if (1 == users[sockfd].improv)
+            if (1 == users[sockfd].completeRW)
             {
-                if (1 == users[sockfd].timer_flag)
+                if (1 == users[sockfd].failRW)
                 {
-                    deal_timer(timer, sockfd);
-                    users[sockfd].timer_flag = 0;
+                    deleteTimer(timer, sockfd);
+                    users[sockfd].failRW = 0;
                 }
-                users[sockfd].improv = 0;
+                users[sockfd].completeRW = 0;
                 break;
             }
         }
@@ -281,39 +282,39 @@ void WebServer::dealClientRead(int sockfd)
 
             if (timer)
             {
-                adjust_timer(timer);
+                adjustTimer(timer);
             }
         }
         else
         {
-            deal_timer(timer, sockfd);
+            deleteTimer(timer, sockfd);
         }
     }
 }
 
 void WebServer::dealClientWrite(int sockfd)
 {
-    util_timer *timer = users_timer[sockfd].timer;
+    Timer *timer = usersTimer[sockfd].timer;
     // reactor
     if (1 == actorModel)
     {
         if (timer)
         {
-            adjust_timer(timer);
+            adjustTimer(timer);
         }
 
         threadPool->append(users + sockfd, 1);
-
+        // TODO: 这里一直在等待读写完成才进一步处理，那这样和proactor模式没区别
         while (true)
         {
-            if (1 == users[sockfd].improv)
+            if (1 == users[sockfd].completeRW)
             {
-                if (1 == users[sockfd].timer_flag)
+                if (1 == users[sockfd].failRW)
                 {
-                    deal_timer(timer, sockfd);
-                    users[sockfd].timer_flag = 0;
+                    deleteTimer(timer, sockfd);
+                    users[sockfd].failRW = 0;
                 }
-                users[sockfd].improv = 0;
+                users[sockfd].completeRW = 0;
                 break;
             }
         }
@@ -327,12 +328,12 @@ void WebServer::dealClientWrite(int sockfd)
 
             if (timer)
             {
-                adjust_timer(timer);
+                adjustTimer(timer);
             }
         }
         else
         {
-            deal_timer(timer, sockfd);
+            deleteTimer(timer, sockfd);
         }
     }
 }
@@ -365,13 +366,13 @@ void WebServer::start()
             else if (events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR))
             {
                 // 移除对应的定时器
-                util_timer *timer = users_timer[sockfd].timer;
-                deal_timer(timer, sockfd);
+                Timer *timer = usersTimer[sockfd].timer;
+                deleteTimer(timer, sockfd);
             }
             // 处理信号
             else if ((sockfd == pipeFd[0]) && (events[i].events & EPOLLIN))
             {
-                bool flag = dealwithsignal(timeout, stop_server);
+                bool flag = dealSignal(timeout, stop_server);
                 if (false == flag)
                     LOG_ERROR("%s", "dealClientConnect failure");
             }
@@ -385,9 +386,10 @@ void WebServer::start()
                 dealClientWrite(sockfd);
             }
         }
+        // TODO: 异步处理加快速度
         if (timeout)
         {
-            utils.timer_handler();
+            utils.cleanTimeoutConnect();
 
             LOG_INFO("%s", "timer tick");
 

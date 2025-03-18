@@ -10,7 +10,7 @@ else
 
 endif
 
-server: main.cpp  ./timer/lst_timer.cpp ./http/HttpConnection.cpp ./log/log.cpp ./mysql/mysqlConnectPool.cpp  webserver.cpp config.cpp
+server: main.cpp  ./timer/connectTimer.cpp ./http/HttpConnection.cpp ./log/log.cpp ./mysql/mysqlConnectPool.cpp  webserver.cpp config.cpp
 	$(CXX) -o server  $^ $(CXXFLAGS) -lpthread -lmysqlclient 
 
 clean:

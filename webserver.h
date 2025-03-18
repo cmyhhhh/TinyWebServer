@@ -17,7 +17,7 @@
 
 const int MAX_FD = 65536;           // 最大文件描述符
 const int MAX_EVENT_NUMBER = 10000; // 最大事件数
-const int TIMESLOT = 5;             // 最小超时单位
+const int CONNECT_TIMEOUT= 5;             // 最小超时单位
 
 class WebServer
 {
@@ -36,10 +36,10 @@ public:
     void eventListen();
     void start();
     void timer(int connfd, struct sockaddr_in clientAddress);
-    void adjust_timer(util_timer *timer);
-    void deal_timer(util_timer *timer, int sockfd);
+    void adjustTimer(Timer *timer);
+    void deleteTimer(Timer *timer, int sockfd);
     bool dealClientConnect();
-    bool dealwithsignal(bool &timeout, bool &stop_server);
+    bool dealSignal(bool &timeout, bool &stop_server);
     void dealClientRead(int sockfd);
     void dealClientWrite(int sockfd);
 
@@ -70,7 +70,7 @@ public:
     int connectTriggerMode;
 
     // 定时器相关
-    client_data *users_timer;
+    ClientData *usersTimer;
     Utils utils;
 };
 #endif
