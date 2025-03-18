@@ -17,7 +17,7 @@
 
 const int MAX_FD = 65536;           // 最大文件描述符
 const int MAX_EVENT_NUMBER = 10000; // 最大事件数
-const int CONNECT_TIMEOUT= 5;             // 最小超时单位
+const int CONNECT_TIMEOUT = 5;      // 最小超时单位
 
 class WebServer
 {
@@ -25,9 +25,7 @@ public:
     WebServer();
     ~WebServer();
 
-    void init(int port, std::string configPath,
-              int log_write, int opt_linger, int trigmode, int sql_num,
-              int thread_num, int close_log, int actor_model);
+    void init(std::string configPath);
 
     void thread_pool();
     void sql_pool();
@@ -54,7 +52,6 @@ public:
     int pipeFd[2];
     int epollFd;
     HttpConnection *users;
-
 
     // 线程池相关
     ThreadPool<HttpConnection> *threadPool;

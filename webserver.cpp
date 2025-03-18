@@ -30,9 +30,7 @@ WebServer::~WebServer()
     delete threadPool;
 }
 
-void WebServer::init(int port, std::string configPath, int log_write,
-                     int opt_linger, int trigmode, int sql_num,
-                     int thread_num, int close_log, int actor_model)
+void WebServer::init(std::string configPath)
 {
     // 初始化日志模块
     if (!Log::getInstance()->init(configPath))
